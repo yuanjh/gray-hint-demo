@@ -1,0 +1,50 @@
+# 新增文件：按登录柜员身份（柜员号/角色）打标的灰度配置，替代原 application.yml 的 Query=flag 方式。
+# 使用方法（不改动任何原文件）：
+#   java -jar gateway/target/gateway.jar --spring.config.name=application-gray \
+#        --server.port=19080 --demo.lane=main
+# 注意：请用 --spring.config.name=application-gray 而不是 --spring.profiles.active=gray，
+# 后者会与原 application.yml 合并加载，路由列表按下标合并会导致新旧规则混在一起。
+server:
+  port: 19080
+spring:
+  application:
+    name: hint-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # 打标不再看 URL 参数：所有请求走同一条路由，
+            # 灰度 Hint 由 GrayHintFilter 按登录柜员身份（柜员号/角色）决定。
+            - id: demo
+              uri: lb://hint-service-a
+              predicates:
+                - Path=/api/demo
+    loadbalancer:
+      cache:
+        enabled: false
+      hint-header-name: X-SC-LB-Hint
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://127.0.0.1:18761/eureka/}
+    registry-fetch-interval-seconds: 3
+  instance:
+    prefer-ip-address: true
+    ip-address: 127.0.0.1
+    instance-id: ${spring.application.name}:${demo.lane:shared}:${server.port}
+    lease-renewal-interval-in-seconds: 3
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+# 灰度名单建议生产放配置中心（Nacos/Apollo）动态维护，改名单不需要发版。
+gray:
+  hint:
+    enabled: true      # 打开 GrayHintFilter；原 application.yml 未配置该项，过滤器不加载
+    lane: trial        # 试点泳道标记值，与试点实例 metadata 的 hint 一致
+    roles:             # 配置了灰度角色的柜员，其所有操作走试点
+      - GRAY_TRIAL
+    tellers:           # 按柜员号直接配置的灰度名单（临时试点/兜底）
+      - "8888"

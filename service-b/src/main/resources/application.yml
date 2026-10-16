@@ -1,0 +1,27 @@
+server:
+  port: 19092
+spring:
+  application:
+    name: hint-service-b
+  cloud:
+    loadbalancer:
+      cache:
+        enabled: false
+      hint-header-name: X-SC-LB-Hint
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://127.0.0.1:18761/eureka/}
+    registry-fetch-interval-seconds: 3
+  instance:
+    prefer-ip-address: true
+    ip-address: 127.0.0.1
+    instance-id: ${spring.application.name}:${demo.lane:shared}:${server.port}
+    lease-renewal-interval-in-seconds: 3
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+demo:
+  lane: main

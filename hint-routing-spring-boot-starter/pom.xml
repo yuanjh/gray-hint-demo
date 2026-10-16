@@ -1,0 +1,12 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>demo.hint</groupId><artifactId>gray-hint-demo</artifactId><version>1.0.0</version></parent>
+  <artifactId>hint-routing-spring-boot-starter</artifactId>
+  <dependencies>
+    <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-loadbalancer</artifactId></dependency>
+    <!-- 可选依赖：让 Starter 编译 Servlet/Feign 支持，但不把 MVC 引入响应式网关。 -->
+    <dependency><groupId>org.springframework</groupId><artifactId>spring-webmvc</artifactId><optional>true</optional></dependency>
+    <dependency><groupId>jakarta.servlet</groupId><artifactId>jakarta.servlet-api</artifactId><optional>true</optional></dependency>
+    <dependency><groupId>io.github.openfeign</groupId><artifactId>feign-core</artifactId><optional>true</optional></dependency>
+  </dependencies>
+</project>

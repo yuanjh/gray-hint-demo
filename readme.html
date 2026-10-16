@@ -1,0 +1,243 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>灰度路由全流程：打标 · 选址 · 透传</title><style>body{max-width:1000px;margin:40px auto;padding:0 24px;font:17px/1.8 system-ui;color:#20364a}h1,h2{color:#086346}h2{margin-top:40px}h3{color:#276aa6;margin-top:28px}pre{padding:20px;background:#edf4fa;border-radius:10px;white-space:pre-wrap;font:14px/1.7 monospace}div{padding:15px;background:#eff7f3;margin:12px 0}table{width:100%;border-collapse:collapse}td,th{padding:12px;border-bottom:1px solid #ddd;text-align:left}</style><style>.lead{color:#617587}section{padding:8px 0 22px;border-bottom:1px solid #dde6ec;scroll-margin-top:20px}nav{display:flex;flex-wrap:wrap;gap:16px;padding:14px 0}a{color:#176748}code{overflow-wrap:anywhere}details{padding:18px;background:#f4f7fa;margin:20px 0;border-radius:10px}summary{cursor:pointer;font-weight:600}td,th{overflow-wrap:anywhere}table{font-size:15px}.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;background:none;padding:0;margin:18px 0}.box{flex:1;min-width:180px;background:#eff7f3;border-radius:10px;padding:14px;font-size:14px}.box b{color:#086346}.arrow{align-self:center;font-size:22px;color:#276aa6;background:none;padding:0}.file{font-size:13px;color:#617587;margin:4px 0 0}.tag{display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:600;background:#d9ebe2;color:#086346}.tag.blue{background:#dce8f4;color:#276aa6}@media(max-width:650px){body{padding:0 16px}td,th{padding:8px}pre{font-size:12px}}</style><h1>灰度路由全流程：打标 · 选址 · 透传</h1>
+<p class="lead">一条请求如何被判为灰度、如何落到试点实例、如何在服务间保持灰度——全流程三个环节分别由两个 Starter 承载：打标在网关（hint-tagging-spring-boot-starter），选址与透传在通用链路（hint-routing-spring-boot-starter），业务代码零侵入。</p>
+<nav><a href="#overview">总览</a><a href="#tagging">① 打标</a><a href="#selection">② 选址</a><a href="#forward">③ 透传</a><a href="#trace">④ 全链路时序</a><a href="#setup">⑤ 接入与配置</a><a href="#verify">⑥ 验证</a></nav>
+
+<section id="overview"><h2>总览：三段职责与模块分工</h2>
+<div class="flow">
+<div class="box"><b>① 打标</b><br>按登录柜员身份决定灰度<br>写入 / 清除 X-SC-LB-Hint<br><span class="tag">网关</span> <span class="tag blue">hint-tagging starter</span></div>
+<div class="arrow">→</div>
+<div class="box"><b>② 选址</b><br>LoadBalancer 读取 Hint<br>灰度选试点实例，普通绝不进试点<br><span class="tag">A / B 调用方</span> <span class="tag blue">hint-routing starter</span></div>
+<div class="arrow">→</div>
+<div class="box"><b>③ 透传</b><br>Feign 新请求自动携带 Hint<br>整条链路保持同一泳道<br><span class="tag">A → B</span> <span class="tag blue">hint-routing starter</span></div>
+</div>
+<table><tr><th>模块</th><th>职责</th><th>引入方</th></tr>
+<tr><td><code>hint-tagging-spring-boot-starter</code></td><td>打标：<code>GrayHintFilter</code> + <code>GrayHintProperties</code></td><td><b>仅网关</b></td></tr>
+<tr><td><code>hint-routing-spring-boot-starter</code></td><td>选址：<code>LaneSupplier</code>；透传：<code>ForwardHint</code></td><td>所有服务 + 网关</td></tr>
+<tr><td><code>gateway</code></td><td>路由转发 + <code>application-gray.yml</code> 灰度名单配置</td><td>—</td></tr>
+<tr><td><code>service-a</code> / <code>service-b</code></td><td>纯业务，不写任何灰度代码</td><td>—</td></tr></table>
+<div>贯穿全流程的约定：Header 统一叫 <b>X-SC-LB-Hint</b>（由 <code>spring.cloud.loadbalancer.hint-header-name</code> 声明）；试点实例在 Eureka 注册 <b>hint=trial</b> 元数据；普通实例无标签。</div></section>
+
+<section id="tagging"><h2>① 打标：谁走灰度</h2>
+<p>打标只发生在链路最前端。<b>GrayHintFilter</b>（GlobalFilter，order=10000，先于负载均衡选址 10150）解析登录柜员身份，命中灰度规则就写 <code>X-SC-LB-Hint: trial</code>，否则清除该 Header。判定依据是<b>柜员号 / 角色</b>，不是 URL 参数。</p>
+<h3>1.1 条件装配：只有网关、且显式开启才生效</h3>
+<p class="file">hint-tagging-spring-boot-starter/src/main/java/demo/hint/tagging/TaggingHintAutoConfiguration.java</p>
+<pre>@AutoConfiguration
+@ConditionalOnClass(name = "org.springframework.cloud.gateway.filter.GlobalFilter")
+@ConditionalOnProperty(prefix = "gray.hint", name = "enabled", havingValue = "true")
+@EnableConfigurationProperties(GrayHintProperties.class)
+public class TaggingHintAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(GrayHintFilter.class)   // 业务可自定义 Bean 覆盖打标策略
+    GrayHintFilter grayHintFilter(GrayHintProperties properties) {
+        return new GrayHintFilter(properties);
+    }
+}</pre>
+<p><code>@ConditionalOnClass</code> 保证非网关应用（service-a/b）即使误引依赖也不装配；<code>gray.hint.enabled</code> 不配则过滤器不加载。</p>
+<h3>1.2 核心过滤器：无条件覆盖，杜绝伪造</h3>
+<p class="file">hint-tagging-spring-boot-starter/src/main/java/demo/hint/tagging/GrayHintFilter.java</p>
+<pre>@Override
+public Mono&lt;Void&gt; filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+    TellerIdentity teller = resolve(exchange);                       // ① 解析柜员身份
+    String hint = isGray(teller) ? properties.getLane() : null;      // ② 灰度判定
+    var request = exchange.getRequest().mutate().headers(headers -&gt; {
+        headers.remove(HINT_HEADER);                                 // ③ 先无条件清除外部传入的 Hint
+        if (hint != null) headers.set(HINT_HEADER, hint);            // ④ 命中灰度才写 trial
+    }).build();
+    return chain.filter(exchange.mutate().request(request).build());
+}
+
+private boolean isGray(TellerIdentity teller) {
+    // 规则一：柜员号在灰度名单；规则二：柜员带有灰度角色。命中任一即灰度。
+    return properties.getTellers().contains(teller.tellerNo())
+            || teller.roles().stream().anyMatch(properties.getRoles()::contains);
+}</pre>
+<h3>1.3 身份从哪来：登录态优先，Header 仅演示兜底</h3>
+<pre>private TellerIdentity resolve(ServerWebExchange exchange) {
+    TellerIdentity fromToken = parseToken(
+            exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION));
+    if (fromToken != null) return fromToken;       // 优先：JWT 中的 tellerNo / roles
+    // 演示兜底：X-Teller-No / X-Teller-Roles。生产上由鉴权过滤器验签 token 后写入。
+    ...
+}</pre>
+<div><b>生产要点：</b>① 身份头必须由鉴权过滤器在验签 JWT 后写入，并先清除外部同名 Header，防止冒用柜员号进灰度；② 灰度名单放配置中心（Nacos/Apollo）动态维护，扩量回滚不发版。</div>
+<h3>1.4 灰度名单配置</h3>
+<p class="file">gateway/src/main/resources/application-gray.yml</p>
+<pre>gray:
+  hint:
+    enabled: true      # 打开 GrayHintFilter
+    lane: trial        # 试点泳道标记值，与试点实例 metadata 的 hint 一致
+    roles:             # 配置了灰度角色的柜员，其所有操作走试点
+      - GRAY_TRIAL
+    tellers:           # 按柜员号直接配置的灰度名单（临时试点/兜底）
+      - "8888"</pre>
+<p>配置类 <code>GrayHintProperties</code>（前缀 <code>gray.hint</code>）绑定以上四个属性。柜员 8888 被配置了 GRAY_TRIAL 角色后，<b>该柜员发起的所有操作都是灰度</b>——无需每个接口再传参数。</p></section>
+
+<section id="selection"><h2>② 选址：灰度落到试点实例</h2>
+<p>打标之后是 Spring Cloud LoadBalancer 的标准选址流程。两个约定把 Hint 翻译成实例选择：<b>服务侧</b>在 Eureka 注册元数据，<b>调用侧</b>由 <code>LaneSupplier</code> 按 Hint 过滤候选实例。</p>
+<h3>2.1 试点实例注册标签</h3>
+<p class="file">service-a/src/main/resources/application-trial.yml（service-b 相同）</p>
+<pre># 只有试点实例启用 trial profile，普通实例不注册 hint 元数据。
+eureka:
+  instance:
+    metadata-map:
+      hint: trial
+demo:
+  lane: trial</pre>
+<h3>2.2 调用侧声明 Hint Header 名</h3>
+<p class="file">service-a/src/main/resources/application.yml</p>
+<pre>spring:
+  cloud:
+    loadbalancer:
+      cache:
+        enabled: false
+      hint-header-name: X-SC-LB-Hint</pre>
+<h3>2.3 LaneSupplier：带标匹配试点，普通绝不进试点</h3>
+<p class="file">hint-routing-spring-boot-starter/src/main/java/demo/hint/starter/LaneSupplier.java</p>
+<pre>@Override
+public Flux&lt;List&lt;ServiceInstance&gt;&gt; get(Request request) {
+    if (request.getContext() instanceof RequestDataContext context
+            &amp;&amp; context.getClientRequest() != null
+            &amp;&amp; StringUtils.hasText(context.getClientRequest().getHeaders().getFirst("X-SC-LB-Hint"))) {
+        // 带标请求：沿用 Spring 原生逻辑，优先匹配，匹配不到则回退全部实例。
+        return super.get(request);
+    }
+    // 普通请求：只能选没有标签的实例。没有普通节点就返回空列表，不能转到试点。
+    return discovery.get(request).map(this::ordinaryOnly);
+}
+
+private List&lt;ServiceInstance&gt; ordinaryOnly(List&lt;ServiceInstance&gt; instances) {
+    return instances.stream().filter(instance -&gt;
+            !StringUtils.hasText(instance.getMetadata().get("hint"))).toList();
+}</pre>
+<p>该 Supplier 通过 LoadBalancer 子容器装配，业务工程无需导入：</p>
+<p class="file">hint-routing-spring-boot-starter/src/main/java/demo/hint/starter/ServletHintConfiguration.java</p>
+<pre>@Bean
+ServiceInstanceListSupplier hintSupplier(ConfigurableApplicationContext context,
+                                        LoadBalancerClientFactory factory) {
+    var discovery = ServiceInstanceListSupplier.builder().withBlockingDiscoveryClient().build(context);
+    return new LaneSupplier(discovery, factory);
+}</pre>
+<table><tr><th>请求类型</th><th>候选实例</th><th>试点节点缺失时</th></tr>
+<tr><td>带 Hint=trial</td><td>hint=trial 的试点实例优先</td><td>允许回退全部实例</td></tr>
+<tr><td>无 Hint（普通）</td><td>仅无标签实例</td><td>返回空列表，请求失败，<b>绝不转到试点</b></td></tr></table></section>
+
+<section id="forward"><h2>③ 透传：服务间保持同一泳道</h2>
+<p>A 调 B 用 Feign 发出的是<b>全新的 HTTP 请求</b>，不会自动继承 A 收到的 Header。透传通过一个全局 Feign 拦截器完成，业务接口不加任何 Header 参数。</p>
+<h3>3.1 ForwardHint：A 的所有 Feign 调用统一透传</h3>
+<p class="file">hint-routing-spring-boot-starter/src/main/java/demo/hint/starter/ForwardHint.java</p>
+<pre>@Override
+public void apply(RequestTemplate template) {
+    // Feign 发出的是新 HTTP 请求，不会自动继承 A 收到的 Header。
+    // 这一个拦截器对 A 的所有同步 Feign 调用生效，业务方法不用改。
+    if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs) {
+        String id = attrs.getRequest().getHeader("X-Request-Id");
+        if (id != null) template.header("X-Request-Id", id);
+        String hint = attrs.getRequest().getHeader("X-SC-LB-Hint");
+        if (hint != null &amp;&amp; !hint.isBlank()) {
+            template.header("X-SC-LB-Hint", hint);
+        }
+    }
+    // 没有 Header 就什么也不做，不补 main、不用 A 自己的身份替换请求标签。
+}</pre>
+<h3>3.2 自动装配：仅 Servlet + Feign 环境</h3>
+<p class="file">hint-routing-spring-boot-starter/src/main/java/demo/hint/starter/FeignHintAutoConfiguration.java</p>
+<pre>@AutoConfiguration
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+@ConditionalOnClass(name = {"feign.RequestInterceptor", "jakarta.servlet.http.HttpServletRequest"})
+public class FeignHintAutoConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(ForwardHint.class)
+    ForwardHint forwardHint() { return new ForwardHint(); }
+}</pre>
+<div>透传只搬两样东西：<b>Hint</b>（决定下游选址）和 <b>请求编号</b>（便于日志串联）。B 收到请求后不需要再判断柜员身份——整条链路的灰度属性在入口就已确定。</div></section>
+
+<section id="trace"><h2>④ 全链路时序：一次灰度请求</h2>
+<table><tr><th>步骤</th><th>组件</th><th>关键动作</th></tr>
+<tr><td>①</td><td>网关 GrayHintFilter + 日志过滤器</td><td>解析柜员 8888 / GRAY_TRIAL → 命中灰度 → 写 <code>X-SC-LB-Hint: trial</code></td></tr>
+<tr><td>②</td><td>LoadBalancer + LaneSupplier（网关 → A）</td><td>读 Hint → 选中 <code>hint=trial</code> 的 A 实例</td></tr>
+<tr><td>③</td><td>service-a ForwardHint</td><td>Feign 调用 hint-service-b，透传 Hint 与请求编号</td></tr>
+<tr><td>④</td><td>LoadBalancer + LaneSupplier（A → B）</td><td>读 Hint → 选中 <code>hint=trial</code> 的 B 实例</td></tr>
+<tr><td>⑤</td><td>网关日志过滤器</td><td>记录实际落点与状态码，请求结束</td></tr></table>
+<pre>[abc12345] ① 网关收到 GET /api/demo，设置 Hint=trial，准备调用 A
+[abc12345] ② A 收到请求，实际实例=a-trial:19093，GET /api/demo，Hint=trial
+[abc12345] ③ A 发起 Feign 请求：GET /internal/demo，目标服务=hint-service-b，透传 Hint=trial
+[abc12345] ④ B 收到请求，实际实例=b-trial:19094，GET /internal/demo，Hint=trial
+[abc12345] ⑤ 网关结束，实际 A 地址=http://127.0.0.1:19093/api/demo，响应状态=200 OK</pre>
+<p>日志前缀的 <code>[8 位请求编号]</code> 在网关、A、B 三处相同，用 ⌘F 搜索即可串起同一次请求。普通柜员的请求全程 Hint 为空，落点必须是 a-main:19091 / b-main:19092。</p>
+<table><tr><th>场景</th><th>打标结果</th><th>A 落点</th><th>B 落点</th></tr>
+<tr><td>柜员 8888（灰度角色）</td><td>Hint=trial</td><td>a-trial:19093</td><td>b-trial:19094</td></tr>
+<tr><td>普通柜员 / 无身份</td><td>Hint 清除</td><td>a-main:19091</td><td>b-main:19092</td></tr>
+<tr><td>外部伪造 X-SC-LB-Hint: trial</td><td>被无条件覆盖</td><td>按身份重新判定</td><td>按身份重新判定</td></tr></table></section>
+
+<section id="setup"><h2>⑤ 接入与配置</h2>
+<h3>5.1 依赖：两个 Starter，各司其职</h3>
+<pre>&lt;!-- 所有服务 + 网关：选址与透传 --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;demo.hint&lt;/groupId&gt;
+    &lt;artifactId&gt;hint-routing-spring-boot-starter&lt;/artifactId&gt;
+    &lt;version&gt;1.0.0&lt;/version&gt;
+&lt;/dependency&gt;
+
+&lt;!-- 仅网关：按柜员身份打标 --&gt;
+&lt;dependency&gt;
+    &lt;groupId&gt;demo.hint&lt;/groupId&gt;
+    &lt;artifactId&gt;hint-tagging-spring-boot-starter&lt;/artifactId&gt;
+    &lt;version&gt;1.0.0&lt;/version&gt;
+&lt;/dependency&gt;</pre>
+<p>Starter 自动识别响应式网关与 Servlet 服务，业务代码不需要注解、不需要扫描配置、不改 Controller 和 Feign 接口。技术栈：Java 17、Spring Boot 3.5.0、Spring Cloud 2025.0.0、同步 Feign。</p>
+<h3>5.2 网关路由：只管转发，不再管打标</h3>
+<p class="file">gateway/src/main/resources/application-gray.yml</p>
+<pre>spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # 打标不再看 URL 参数：所有请求走同一条路由，
+            # 灰度 Hint 由 GrayHintFilter 按登录柜员身份（柜员号/角色）决定。
+            - id: demo
+              uri: lb://hint-service-a
+              predicates:
+                - Path=/api/demo
+    loadbalancer:
+      cache:
+        enabled: false
+      hint-header-name: X-SC-LB-Hint</pre>
+<div><b>为什么用 <code>--spring.config.name=application-gray</code> 而不是 <code>--spring.profiles.active=gray</code>：</b>profile 方式会与原 application.yml 合并加载，路由列表按下标合并会导致新旧规则混杂；config.name 只加载新文件，行为确定。原 <code>Query=flag</code> 配置（application.yml）完整保留，两套方式可并存。</div>
+<h3>5.3 启动</h3>
+<pre># 网关（新打标方式）：IDEA 运行配置 Hint-Gateway-Gray，或命令行
+java -jar gateway/target/gateway.jar --spring.config.name=application-gray \
+     --server.port=19080 --demo.lane=main
+
+# 四个服务实例照旧（A/B 各启动两次：主干无标签、试点 hint=trial）
+python3 scripts/run.py b-main     # 19092
+python3 scripts/run.py b-trial    # 19094
+python3 scripts/run.py a-main     # 19091
+python3 scripts/run.py a-trial    # 19093</pre>
+<p>先保证 Eureka（127.0.0.1:18761）在运行。A/B 是同一份代码分别启动两次，主干不带标、试点带标。</p></section>
+
+<section id="verify"><h2>⑥ 验证</h2>
+<pre># 演示环境用身份头模拟登录柜员；生产走 Authorization: Bearer &lt;jwt&gt;
+curl --noproxy '*' -H 'X-Teller-No: 8888' -H 'X-Teller-Roles: GRAY_TRIAL' \
+     -H 'X-SC-LB-Hint: forged' 'http://127.0.0.1:19080/api/demo'
+curl --noproxy '*' -H 'X-Teller-No: 1234' -H 'X-Teller-Roles: TELLER' \
+     'http://127.0.0.1:19080/api/demo'
+
+# 并发回归：42 个请求验证灰度落点、普通隔离、伪造标记清除、Feign 透传
+python3 scripts/verify_gray.py</pre>
+<table><tr><th>校验点</th><th>预期</th></tr>
+<tr><td>柜员 8888 / GRAY_TRIAL</td><td><code>serviceA.instanceHint=trial</code>、<code>serviceB.instanceHint=trial</code></td></tr>
+<tr><td>普通柜员 / 无身份</td><td>A、B 均落主干实例，instanceHint 为空</td></tr>
+<tr><td>伪造 X-SC-LB-Hint</td><td>被 GrayHintFilter 无条件清除/覆盖，不影响结果</td></tr>
+<tr><td>试点实例缺席</td><td>灰度请求允许回退主干；普通请求仍不进试点</td></tr></table></section>
+
+<details><summary>附：新旧打标方式对比</summary>
+<table><tr><th>维度</th><th>旧：Query=flag（application.yml）</th><th>新：柜员身份（application-gray.yml）</th></tr>
+<tr><td>判定依据</td><td>URL 参数 flag=8888</td><td>登录态中的柜员号 / 角色 + 灰度名单</td></tr>
+<tr><td>配置位置</td><td>路由谓词 + Set/RemoveRequestHeader</td><td>GrayHintFilter + gray.hint.* 名单</td></tr>
+<tr><td>伪造风险</td><td>参数可见可仿造，仅适合演示</td><td>身份来自验签 token，Header 一律覆盖</td></tr>
+<tr><td>灰度粒度</td><td>单次请求</td><td>柜员级：该柜员所有操作都是灰度</td></tr>
+<tr><td>运营扩量</td><td>改路由配置、重启网关</td><td>配置中心改名单，动态生效</td></tr>
+<tr><td>业务侵入</td><td>无</td><td>无（打标在 starter，服务零感知）</td></tr></table>
+<p>选址（LaneSupplier）与透传（ForwardHint）两种方式完全复用，迁移只发生在网关入口。</p></details>
+</html>

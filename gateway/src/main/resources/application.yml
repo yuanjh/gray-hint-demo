@@ -1,0 +1,45 @@
+server:
+  port: 19080
+spring:
+  application:
+    name: hint-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # flag=8888 走试点；不带 flag 或其他值走主分支。
+            # 两条规则仍使用同一个服务名，没有两套网关或服务。
+            - id: trial-flag
+              uri: lb://hint-service-a
+              predicates:
+                - Path=/api/demo
+                - Query=flag, ^8888$
+              filters:
+                - SetRequestHeader=X-SC-LB-Hint, trial
+            - id: ordinary
+              uri: lb://hint-service-a
+              predicates:
+                - Path=/api/demo
+              filters:
+                # 普通请求不带标记，也清除外部自行填写的 Hint。
+                - RemoveRequestHeader=X-SC-LB-Hint
+    loadbalancer:
+      cache:
+        enabled: false
+      hint-header-name: X-SC-LB-Hint
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://127.0.0.1:18761/eureka/}
+    registry-fetch-interval-seconds: 3
+  instance:
+    prefer-ip-address: true
+    ip-address: 127.0.0.1
+    instance-id: ${spring.application.name}:${demo.lane:shared}:${server.port}
+    lease-renewal-interval-in-seconds: 3
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,0 +1,10 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>demo.hint</groupId><artifactId>gray-hint-demo</artifactId><version>1.0.0</version></parent>
+  <artifactId>hint-tagging-spring-boot-starter</artifactId>
+  <dependencies>
+    <!-- 可选依赖：只用于编译网关类型（GlobalFilter 等），不会传递给使用方；
+         真正的网关栈由 gateway 工程自己声明。jackson-databind 也随它带入编译期。 -->
+    <dependency><groupId>org.springframework.cloud</groupId><artifactId>spring-cloud-starter-gateway-server-webflux</artifactId><optional>true</optional></dependency>
+  </dependencies>
+</project>

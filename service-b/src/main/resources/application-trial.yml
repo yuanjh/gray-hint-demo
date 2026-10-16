@@ -1,0 +1,7 @@
+# 只有试点实例启用 trial profile，普通实例不注册 hint 元数据。
+eureka:
+  instance:
+    metadata-map:
+      hint: trial
+demo:
+  lane: trial

@@ -1,0 +1,12 @@
+<?xml version="1.0" ?>
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Hint-B-trial" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="demo.hint.serviceb.Application"/>
+    <module name="service-b"/>
+    <option name="PROGRAM_PARAMETERS" value="--server.port=19094 --demo.lane=trial --spring.profiles.active=trial"/>
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$"/>
+    <method v="2">
+      <option name="Make" enabled="true"/>
+    </method>
+  </configuration>
+</component>

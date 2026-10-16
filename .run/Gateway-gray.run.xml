@@ -1,0 +1,12 @@
+<?xml version="1.0" ?>
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Hint-Gateway-Gray" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="demo.hint.gateway.Application"/>
+    <module name="gateway"/>
+    <option name="PROGRAM_PARAMETERS" value="--spring.config.name=application-gray --server.port=19080 --demo.lane=main"/>
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$"/>
+    <method v="2">
+      <option name="Make" enabled="true"/>
+    </method>
+  </configuration>
+</component>
