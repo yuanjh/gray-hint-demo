@@ -20,6 +20,13 @@ spring:
               uri: lb://hint-service-a
               predicates:
                 - Path=/api/demo
+          # 放行 readme.html 按钮演示的跨域请求（页面 file:// 直接调用网关）。
+          globalcors:
+            cors-configurations:
+              "[/**]":
+                allowed-origin-patterns: "*"
+                allowed-headers: "*"
+                allowed-methods: "*"
     loadbalancer:
       cache:
         enabled: false
@@ -39,7 +46,21 @@ management:
     web:
       exposure:
         include: health,info
-# 灰度名单建议生产放配置中心（Nacos/Apollo）动态维护，改名单不需要发版。
+# ---- Apollo 配置中心 ----
+# 灰度名单以 Apollo 为准（application 命名空间，键见根目录 apollo-gray-hint.properties），
+# 本地 gray.hint.* 仅作缺省值/离线兜底；Apollo 修改后由 ApolloGrayHintRefresher 实时重绑定。
+# 本地演示不开 Apollo（APOLLO_ENABLED 缺省 false）；接入 Apollo 时置 true 并配置 APOLLO_APP_ID/APOLLO_META。
+app:
+  id: ${APOLLO_APP_ID:hint-gateway}
+apollo:
+  meta: ${APOLLO_META:http://localhost:8080}
+  cache-dir: ${APOLLO_CACHE_DIR:/opt/data/apollo-config}
+  bootstrap:
+    enabled: ${APOLLO_ENABLED:false}
+    namespaces: application
+    eager-load:
+      enabled: true
+# 灰度名单缺省值（Apollo 未配置或离线时生效），生产建议只在 Apollo 维护。
 gray:
   hint:
     enabled: true      # 打开 GrayHintFilter；原 application.yml 未配置该项，过滤器不加载

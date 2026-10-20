@@ -1,6 +1,6 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>灰度路由全流程：打标 · 选址 · 透传</title><style>body{max-width:1000px;margin:40px auto;padding:0 24px;font:17px/1.8 system-ui;color:#20364a}h1,h2{color:#086346}h2{margin-top:40px}h3{color:#276aa6;margin-top:28px}pre{padding:20px;background:#edf4fa;border-radius:10px;white-space:pre-wrap;font:14px/1.7 monospace}div{padding:15px;background:#eff7f3;margin:12px 0}table{width:100%;border-collapse:collapse}td,th{padding:12px;border-bottom:1px solid #ddd;text-align:left}</style><style>.lead{color:#617587}section{padding:8px 0 22px;border-bottom:1px solid #dde6ec;scroll-margin-top:20px}nav{display:flex;flex-wrap:wrap;gap:16px;padding:14px 0}a{color:#176748}code{overflow-wrap:anywhere}details{padding:18px;background:#f4f7fa;margin:20px 0;border-radius:10px}summary{cursor:pointer;font-weight:600}td,th{overflow-wrap:anywhere}table{font-size:15px}.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;background:none;padding:0;margin:18px 0}.box{flex:1;min-width:180px;background:#eff7f3;border-radius:10px;padding:14px;font-size:14px}.box b{color:#086346}.arrow{align-self:center;font-size:22px;color:#276aa6;background:none;padding:0}.file{font-size:13px;color:#617587;margin:4px 0 0}.tag{display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:600;background:#d9ebe2;color:#086346}.tag.blue{background:#dce8f4;color:#276aa6}@media(max-width:650px){body{padding:0 16px}td,th{padding:8px}pre{font-size:12px}}</style><h1>灰度路由全流程：打标 · 选址 · 透传</h1>
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>灰度路由全流程：打标 · 选址 · 透传</title><style>body{max-width:1000px;margin:40px auto;padding:0 24px;font:17px/1.8 system-ui;color:#20364a}h1,h2{color:#086346}h2{margin-top:40px}h3{color:#276aa6;margin-top:28px}pre{padding:20px;background:#edf4fa;border-radius:10px;white-space:pre-wrap;font:14px/1.7 monospace}div{padding:15px;background:#eff7f3;margin:12px 0}table{width:100%;border-collapse:collapse}td,th{padding:12px;border-bottom:1px solid #ddd;text-align:left}</style><style>.lead{color:#617587}section{padding:8px 0 22px;border-bottom:1px solid #dde6ec;scroll-margin-top:20px}nav{display:flex;flex-wrap:wrap;gap:16px;padding:14px 0}a{color:#176748}code{overflow-wrap:anywhere}details{padding:18px;background:#f4f7fa;margin:20px 0;border-radius:10px}summary{cursor:pointer;font-weight:600}td,th{overflow-wrap:anywhere}table{font-size:15px}.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;background:none;padding:0;margin:18px 0}.box{flex:1;min-width:180px;background:#eff7f3;border-radius:10px;padding:14px;font-size:14px}.box b{color:#086346}.arrow{align-self:center;font-size:22px;color:#276aa6;background:none;padding:0}.file{font-size:13px;color:#617587;margin:4px 0 0}.tag{display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:600;background:#d9ebe2;color:#086346}.tag.blue{background:#dce8f4;color:#276aa6}button.test{padding:10px 20px;border:0;border-radius:8px;background:#086346;color:#fff;font:600 15px system-ui;cursor:pointer;margin:6px 0}button.test:hover{background:#0b7b58}pre.out{background:#fdf6e3}@media(max-width:650px){body{padding:0 16px}td,th{padding:8px}pre{font-size:12px}}</style><h1>灰度路由全流程：打标 · 选址 · 透传</h1>
 <p class="lead">一条请求如何被判为灰度、如何落到试点实例、如何在服务间保持灰度——全流程三个环节分别由两个 Starter 承载：打标在网关（hint-tagging-spring-boot-starter），选址与透传在通用链路（hint-routing-spring-boot-starter），业务代码零侵入。</p>
-<nav><a href="#overview">总览</a><a href="#tagging">① 打标</a><a href="#selection">② 选址</a><a href="#forward">③ 透传</a><a href="#trace">④ 全链路时序</a><a href="#setup">⑤ 接入与配置</a><a href="#verify">⑥ 验证</a></nav>
+<nav><a href="#overview">总览</a><a href="#tagging">① 打标</a><a href="#selection">② 选址</a><a href="#forward">③ 透传</a><a href="#trace">④ 全链路时序</a><a href="#setup">⑤ 接入与配置</a><a href="#demo">⑥ 在线演示</a><a href="#verify">⑦ 验证</a></nav>
 
 <section id="overview"><h2>总览：三段职责与模块分工</h2>
 <div class="flow">
@@ -13,7 +13,7 @@
 <table><tr><th>模块</th><th>职责</th><th>引入方</th></tr>
 <tr><td><code>hint-tagging-spring-boot-starter</code></td><td>打标：<code>GrayHintFilter</code> + <code>GrayHintProperties</code></td><td><b>仅网关</b></td></tr>
 <tr><td><code>hint-routing-spring-boot-starter</code></td><td>选址：<code>LaneSupplier</code>；透传：<code>ForwardHint</code></td><td>所有服务 + 网关</td></tr>
-<tr><td><code>gateway</code></td><td>路由转发 + <code>application-gray.yml</code> 灰度名单配置</td><td>—</td></tr>
+<tr><td><code>gateway</code></td><td>路由转发 + <code>ApolloGrayHintRefresher</code> 动态刷新灰度名单（Apollo）</td><td>—</td></tr>
 <tr><td><code>service-a</code> / <code>service-b</code></td><td>纯业务，不写任何灰度代码</td><td>—</td></tr></table>
 <div>贯穿全流程的约定：Header 统一叫 <b>X-SC-LB-Hint</b>（由 <code>spring.cloud.loadbalancer.hint-header-name</code> 声明）；试点实例在 Eureka 注册 <b>hint=trial</b> 元数据；普通实例无标签。</div></section>
 
@@ -59,18 +59,28 @@ private boolean isGray(TellerIdentity teller) {
     // 演示兜底：X-Teller-No / X-Teller-Roles。生产上由鉴权过滤器验签 token 后写入。
     ...
 }</pre>
-<div><b>生产要点：</b>① 身份头必须由鉴权过滤器在验签 JWT 后写入，并先清除外部同名 Header，防止冒用柜员号进灰度；② 灰度名单放配置中心（Nacos/Apollo）动态维护，扩量回滚不发版。</div>
-<h3>1.4 灰度名单配置</h3>
-<p class="file">gateway/src/main/resources/application-gray.yml</p>
-<pre>gray:
-  hint:
-    enabled: true      # 打开 GrayHintFilter
-    lane: trial        # 试点泳道标记值，与试点实例 metadata 的 hint 一致
-    roles:             # 配置了灰度角色的柜员，其所有操作走试点
-      - GRAY_TRIAL
-    tellers:           # 按柜员号直接配置的灰度名单（临时试点/兜底）
-      - "8888"</pre>
-<p>配置类 <code>GrayHintProperties</code>（前缀 <code>gray.hint</code>）绑定以上四个属性。柜员 8888 被配置了 GRAY_TRIAL 角色后，<b>该柜员发起的所有操作都是灰度</b>——无需每个接口再传参数。</p></section>
+<div><b>生产要点：</b>① 身份头必须由鉴权过滤器在验签 JWT 后写入，并先清除外部同名 Header，防止冒用柜员号进灰度；② 灰度名单放 Apollo 配置中心动态维护（见 1.4），扩量回滚不发版。</div>
+<h3>1.4 灰度名单配置：柜员号维护在 Apollo，不在配置文件</h3>
+<p>灰度名单（柜员号 / 角色）以 <b>Apollo 配置中心</b>为准（application 命名空间），扩量、回滚、调整试点柜员都只改配置不发版。配置内容以根目录 <code>apollo-gray-hint.properties</code> 为唯一来源，可直接粘贴到 Apollo Portal，或用脚本一键推送并发布：</p>
+<pre># Apollo application 命名空间：apollo-gray-hint.properties
+gray.hint.enabled=true        # 打开 GrayHintFilter
+gray.hint.lane=trial          # 试点泳道标记值，与试点实例 metadata 的 hint 一致
+gray.hint.roles=GRAY_TRIAL    # 灰度角色名单，多个用英文逗号分隔
+gray.hint.tellers=8888        # 柜员号灰度名单，多个用英文逗号分隔</pre>
+<pre># 一键推送并发布（--prune 顺带清理命名空间里多余的键）
+APOLLO_PORTAL=http://localhost:18070 APOLLO_APP_ID=gray-demo APOLLO_ENV=DEV \
+APOLLO_ADMIN_USER=apollo APOLLO_ADMIN_PASSWORD=admin \
+python3 scripts/apollo_push.py --prune</pre>
+<p>配置类 <code>GrayHintProperties</code>（前缀 <code>gray.hint</code>）绑定以上四个属性。柜员 8888 被配置了 GRAY_TRIAL 角色后，<b>该柜员发起的所有操作都是灰度</b>——无需每个接口再传参数。</p>
+<h3>1.5 改名单不重启：Apollo 动态刷新</h3>
+<p class="file">gateway/src/main/java/demo/hint/gateway/ApolloGrayHintRefresher.java</p>
+<pre>@ApolloConfigChangeListener(interestedKeyPrefixes = "gray.hint.")
+public void onChange(ConfigChangeEvent event) {
+    GrayHintProperties target = properties.getIfAvailable();
+    if (target == null) return; // gray.hint.enabled 未开启时没有该 Bean
+    Binder.get(environment).bind("gray.hint", Bindable.ofInstance(target)); // 原地重绑定单例
+}</pre>
+<p>在 Apollo 里修改名单并发布后，网关<b>实时生效，无需重启</b>。本地演示可以不开 Apollo（<code>APOLLO_ENABLED</code> 缺省 false），此时 <code>application-gray.yml</code> 中的 <code>gray.hint.*</code> 仅作缺省值 / 离线兜底；生产上名单只在 Apollo 维护，接入时置 <code>APOLLO_ENABLED=true</code> 并配置 <code>APOLLO_APP_ID</code> / <code>APOLLO_META</code>。</p></section>
 
 <section id="selection"><h2>② 选址：灰度落到试点实例</h2>
 <p>打标之后是 Spring Cloud LoadBalancer 的标准选址流程。两个约定把 Hint 翻译成实例选择：<b>服务侧</b>在 Eureka 注册元数据，<b>调用侧</b>由 <code>LaneSupplier</code> 按 Hint 过滤候选实例。</p>
@@ -199,13 +209,20 @@ public class FeignHintAutoConfiguration {
               uri: lb://hint-service-a
               predicates:
                 - Path=/api/demo
+          globalcors:            # 放行 readme.html 按钮演示的跨域请求
+            cors-configurations:
+              "[/**]":
+                allowed-origin-patterns: "*"
+                allowed-headers: "*"
+                allowed-methods: "*"
     loadbalancer:
       cache:
         enabled: false
       hint-header-name: X-SC-LB-Hint</pre>
-<div><b>为什么用 <code>--spring.config.name=application-gray</code> 而不是 <code>--spring.profiles.active=gray</code>：</b>profile 方式会与原 application.yml 合并加载，路由列表按下标合并会导致新旧规则混杂；config.name 只加载新文件，行为确定。原 <code>Query=flag</code> 配置（application.yml）完整保留，两套方式可并存。</div>
+<div><b>为什么用 <code>--spring.config.name=application-gray</code> 而不是 <code>--spring.profiles.active=gray</code>：</b>profile 方式会与原 application.yml 合并加载，路由列表按下标合并会导致新旧规则混杂；config.name 只加载新文件，行为确定。原 <code>Query=flag</code> 打标方式（application.yml）已移除，网关只保留柜员身份打标。</div>
 <h3>5.3 启动</h3>
-<pre># 网关（新打标方式）：IDEA 运行配置 Hint-Gateway-Gray，或命令行
+<pre># 网关（新打标方式）：IDEA 运行配置 Hint-Gateway-Gray，或命令行。
+# 接入 Apollo 时前置环境变量：APOLLO_ENABLED=true APOLLO_APP_ID=gray-demo APOLLO_META=http://localhost:18082
 java -jar gateway/target/gateway.jar --spring.config.name=application-gray \
      --server.port=19080 --demo.lane=main
 
@@ -216,7 +233,27 @@ python3 scripts/run.py a-main     # 19091
 python3 scripts/run.py a-trial    # 19093</pre>
 <p>先保证 Eureka（127.0.0.1:18761）在运行。A/B 是同一份代码分别启动两次，主干不带标、试点带标。</p></section>
 
-<section id="verify"><h2>⑥ 验证</h2>
+<section id="demo"><h2>⑥ 在线演示：点按钮看灰度落点</h2>
+<p class="lead">启动网关与四个实例（见 5.3）后，点击按钮发起真实请求。按钮下方展示该请求携带的<b>全部参数</b>，结果面板输出网关判定、响应 JSON 与 A/B 实例落点——两个按钮唯一的差别就是登录柜员身份。</p>
+<div class="flow">
+<div class="box"><b>普通柜员 1234</b> <span class="tag blue">预期：主线</span><br>
+<button class="test" onclick="demo('normal')">发送普通请求</button>
+<pre>GET http://127.0.0.1:19080/api/demo
+X-Teller-No: 1234
+X-Teller-Roles: TELLER</pre>
+<p class="file">判定：不在灰度名单 → X-SC-LB-Hint 被清除 → 落点 a-main:19091 / b-main:19092</p></div>
+<div class="box"><b>灰度柜员 8888</b> <span class="tag">预期：试点</span><br>
+<button class="test" onclick="demo('gray')">发送灰度请求</button>
+<pre>GET http://127.0.0.1:19080/api/demo
+X-Teller-No: 8888
+X-Teller-Roles: GRAY_TRIAL
+X-SC-LB-Hint: forged      ← 演示防伪造，会被覆盖</pre>
+<p class="file">判定：命中柜员号 8888 / GRAY_TRIAL → 覆盖为 X-SC-LB-Hint: trial → 落点 a-trial:19093 / b-trial:19094</p></div>
+</div>
+<pre id="demoResult" class="out">点击上方按钮查看结果…</pre>
+<div>页面直接调用网关，需网关放行跨域（application-gray.yml 已配 <code>globalcors</code>）。若浏览器仍拦截 file:// 页面请求，可先在本目录执行 <code>python3 -m http.server</code> 再打开页面，或直接使用结果面板给出的等价 curl 命令（参数一致）。</div></section>
+
+<section id="verify"><h2>⑦ 验证</h2>
 <pre># 演示环境用身份头模拟登录柜员；生产走 Authorization: Bearer &lt;jwt&gt;
 curl --noproxy '*' -H 'X-Teller-No: 8888' -H 'X-Teller-Roles: GRAY_TRIAL' \
      -H 'X-SC-LB-Hint: forged' 'http://127.0.0.1:19080/api/demo'
@@ -234,10 +271,43 @@ python3 scripts/verify_gray.py</pre>
 <details><summary>附：新旧打标方式对比</summary>
 <table><tr><th>维度</th><th>旧：Query=flag（application.yml）</th><th>新：柜员身份（application-gray.yml）</th></tr>
 <tr><td>判定依据</td><td>URL 参数 flag=8888</td><td>登录态中的柜员号 / 角色 + 灰度名单</td></tr>
-<tr><td>配置位置</td><td>路由谓词 + Set/RemoveRequestHeader</td><td>GrayHintFilter + gray.hint.* 名单</td></tr>
+<tr><td>配置位置</td><td>路由谓词 + Set/RemoveRequestHeader</td><td>GrayHintFilter + Apollo 中 gray.hint.* 名单</td></tr>
 <tr><td>伪造风险</td><td>参数可见可仿造，仅适合演示</td><td>身份来自验签 token，Header 一律覆盖</td></tr>
 <tr><td>灰度粒度</td><td>单次请求</td><td>柜员级：该柜员所有操作都是灰度</td></tr>
-<tr><td>运营扩量</td><td>改路由配置、重启网关</td><td>配置中心改名单，动态生效</td></tr>
+<tr><td>运营扩量</td><td>改路由配置、重启网关</td><td>Apollo 改名单，发布即生效，不发版不重启</td></tr>
 <tr><td>业务侵入</td><td>无</td><td>无（打标在 starter，服务零感知）</td></tr></table>
 <p>选址（LaneSupplier）与透传（ForwardHint）两种方式完全复用，迁移只发生在网关入口。</p></details>
+<script>
+function demo(kind) {
+  var specs = {
+    normal: {label: '普通柜员 1234', expect: 'a-main:19091 / b-main:19092',
+             headers: {'X-Teller-No': '1234', 'X-Teller-Roles': 'TELLER'}},
+    gray:   {label: '灰度柜员 8888', expect: 'a-trial:19093 / b-trial:19094',
+             headers: {'X-Teller-No': '8888', 'X-Teller-Roles': 'GRAY_TRIAL', 'X-SC-LB-Hint': 'forged'}}
+  };
+  var s = specs[kind], url = 'http://127.0.0.1:19080/api/demo';
+  var out = document.getElementById('demoResult');
+  var params = Object.keys(s.headers).map(function (k) { return k + ': ' + s.headers[k]; });
+  var head = '▶ ' + s.label + '\n\n【请求参数】\nGET ' + url + '\n' + params.join('\n')
+           + '\n\n【落点预期】' + s.expect;
+  out.textContent = head + '\n\n请求中…';
+  fetch(url, {headers: s.headers}).then(function (res) {
+    return res.text().then(function (text) {
+      var pretty = text;
+      try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (e) {}
+      var landing = '';
+      try {
+        var d = JSON.parse(text);
+        function lane(o) { return o.instance + (o.instanceHint === 'trial' ? '（trial 试点）' : '（main 主线）'); }
+        landing = '\n\n【实际落点】serviceA → ' + lane(d.serviceA) + '\nserviceB → ' + lane(d.serviceB);
+      } catch (e) {}
+      out.textContent = head + '\n\n【响应】HTTP ' + res.status + '\n' + pretty + landing;
+    });
+  }).catch(function (e) {
+    var curl = Object.keys(s.headers).map(function (k) { return "-H '" + k + ': ' + s.headers[k] + "'"; }).join(' ');
+    out.textContent = head + '\n\n【请求失败】' + e
+      + '\n\n浏览器拦截时可用等价命令（参数一致）：\ncurl --noproxy \'*\' ' + curl + " '" + url + "'";
+  });
+}
+</script>
 </html>
